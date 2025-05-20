@@ -159,7 +159,7 @@ data "aws_ami" "rhel" {
 }
 
 resource "aws_instance" "aap_instance" {
-  instance_type               = "t2.xlarge"
+  instance_type               = "m6a.xlarge"
   vpc_security_group_ids      = [aws_security_group.aap_security_group.id]
   associate_public_ip_address = true
   key_name                    = aws_key_pair.cloud_key.key_name
