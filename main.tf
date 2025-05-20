@@ -1,7 +1,3 @@
-
-
-
-
 #Generate SSH key pair 
 resource "tls_private_key" "cloud_key" {
   algorithm = "RSA"
@@ -169,12 +165,11 @@ resource "aws_instance" "aap_instance" {
   key_name                    = aws_key_pair.cloud_key.key_name
   //user_data                   = file("user_data.txt")
   ami               = data.aws_ami.rhel.id
-  availability_zone = "us-east-2a"
   subnet_id         = aws_subnet.aap_subnet.id
 
   # Specify the root block device to adjust volume size
   root_block_device {
-    volume_size           = 100   # Set desired size in GB (e.g., 100 GB)
+    volume_size           = 150   # Set desired size in GB (e.g., 100 GB)
     volume_type           = "gp3" # Optional: Specify volume type (e.g., "gp3" for general purpose SSD)
     delete_on_termination = true  # Optional: Automatically delete volume on instance termination
   }
