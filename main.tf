@@ -45,7 +45,6 @@ resource "aws_route_table" "aap_pub_igw" {
 }
 
 resource "aws_subnet" "aap_subnet" {
-  availability_zone       = "us-east-2a"
   cidr_block              = "10.1.0.0/24"
   map_public_ip_on_launch = "true"
   vpc_id                  = aws_vpc.aap_vpc.id
@@ -149,7 +148,7 @@ data "aws_ami" "rhel" {
   most_recent = true
   filter {
     name   = "name"
-    values = ["RHEL-9.4.0_HVM*"]
+    values = ["RHEL-9.5.0_HVM*"]
   }
   filter {
     name   = "virtualization-type"
@@ -162,8 +161,8 @@ resource "aws_instance" "aap_instance" {
   instance_type               = "m6a.xlarge"
   vpc_security_group_ids      = [aws_security_group.aap_security_group.id]
   associate_public_ip_address = true
-  key_name                    = aws_key_pair.cloud_key.key_name
-  //user_data                   = file("user_data.txt")
+  key_name                    = module.key_pair.key_pair_name
+  #user_data                   = file("user_data.txt")
   ami               = data.aws_ami.rhel.id
   subnet_id         = aws_subnet.aap_subnet.id
 
@@ -173,10 +172,42 @@ resource "aws_instance" "aap_instance" {
     volume_type           = "gp3" # Optional: Specify volume type (e.g., "gp3" for general purpose SSD)
     delete_on_termination = true  # Optional: Automatically delete volume on instance termination
   }
+  
 
   tags = {
     Name      = "aap-controller"
     Terraform = "true"
+  }
+}
+
+module "key_pair" {
+  source  = "terraform-aws-modules/key-pair/aws"
+  version = "2.0.2"
+
+  key_name           = "aap-testing"
+  create_private_key = true
+}
+
+resource "local_sensitive_file" "key_pair_pem" {
+  filename = "${path.root}/../${module.key_pair.key_pair_name}.pem"
+  file_permission = "400"
+  content = module.key_pair.private_key_pem
+}
+
+resource "terraform_data" "aap_subscription_manager" {
+  connection {
+    type = "ssh"
+    user = "ec2-user"
+    host = aws_instance.aap_instance.public_ip
+    private_key = module.key_pair.private_key_pem
+    timeout = "10m"
+  }
+  provisioner "remote-exec" {
+    inline = [ 
+      "sudo subscription-manager register --username ${var.aap_red_hat_username} --password ${var.aap_red_hat_password} --auto-attach",
+      "sudo subscription-manager config --rhsm.manage_repos=1"#,
+      #"yes | sudo dnf upgrade"
+      ]
   }
 }
 
@@ -227,57 +258,57 @@ resource "aws_efs_mount_target" "efs_mount_target_a" {
   security_groups = [aws_security_group.efs_security_group.id]
 }
 
-resource "null_resource" "hostname_update" {
-  depends_on = [aws_instance.aap_instance]
+# resource "null_resource" "hostname_update" {
+#   depends_on = [aws_instance.aap_instance]
 
-  provisioner "remote-exec" {
-    inline = [
-      # Register Red Hat Host
-      "sudo rhc connect --activation-key=<activation_key_name> --organization=<organization_ID>",
+#   provisioner "remote-exec" {
+#     inline = [
+#       # Register Red Hat Host
+#       "sudo rhc connect --activation-key=<activation_key_name> --organization=<organization_ID>",
 
-      # Ensure stuff is installed
-      "sudo dnf install -y ansible-core wget git-core rsync vim",
+#       # Ensure stuff is installed
+#       "sudo dnf install -y ansible-core wget git-core rsync vim",
 
-      # Set hostname
-      "sudo hostnamectl set-hostname ${aws_instance.aap_instance.public_dns}",
+#       # Set hostname
+#       "sudo hostnamectl set-hostname ${aws_instance.aap_instance.public_dns}",
 
-      # Download and extract the setup file
-      "wget https://github.com/r3dact3d/AAP-2.5-Containerized-on-AWS/raw/refs/heads/ansible/post_data/ansible-automation-platform-containerized-setup-<AAP_VERSION>.tar.gz",
-      "file ansible-automation-platform-containerized-setup-<AAP_VERSION>.tar.gz",
-      "tar xfvz ansible-automation-platform-containerized-setup-<AAP_VERSION>.tar.gz",
-      "sleep 45",
+#       # Download and extract the setup file
+#       "wget https://github.com/r3dact3d/AAP-2.5-Containerized-on-AWS/raw/refs/heads/ansible/post_data/ansible-automation-platform-containerized-setup-<AAP_VERSION>.tar.gz",
+#       "file ansible-automation-platform-containerized-setup-<AAP_VERSION>.tar.gz",
+#       "tar xfvz ansible-automation-platform-containerized-setup-<AAP_VERSION>.tar.gz",
+#       "sleep 45",
 
-      # Setup SSH Keys
-      "echo ${tls_private_key.cloud_key.private_key_pem} >> /home/ec2-user/.ssh/cloud_keys",
-      "chmod 0644 /home/ec2-user/.ssh/cloud_keys",
+#       # Setup SSH Keys
+#       "echo ${tls_private_key.cloud_key.private_key_pem} >> /home/ec2-user/.ssh/cloud_keys",
+#       "chmod 0644 /home/ec2-user/.ssh/cloud_keys",
 
-      # Stage the manifest files
-      "wget https://github.com/r3dact3d/AAP-2.5-Containerized-on-AWS/raw/refs/heads/ansible/post_data/manifest_AAP_Demo.zip",
-      "sleep 15",
+#       # Stage the manifest files
+#       "wget https://github.com/r3dact3d/AAP-2.5-Containerized-on-AWS/raw/refs/heads/ansible/post_data/manifest_AAP_Demo.zip",
+#       "sleep 15",
 
-      # Configure inventory
-      "cd ansible-automation-platform-containerized-setup-<AAP_VERSION>",
-      "wget -O inventory-growth https://raw.githubusercontent.com/r3dact3d/AAP-2.5-Containerized-on-AWS/refs/heads/ansible/post_data/inventory-growth-custom",
-      "sleep 15",
-      "sed -i 's/<set your own>/new-install-password/g' inventory-growth",
-      "sed -i 's/aap.example.org/${aws_instance.aap_instance.public_dns}/g' inventory-growth",
-      "sed -i 's/<your RHN username>/rhn_user/g' inventory-growth",
-      "sed -i 's/<your RHN password>/rhn_pass/g' inventory-growth",
-      #"sed -i 's/<path_to_nfs_share>/${aws_efs_file_system.efs.dns_name}/g' inventory-growth",
-      "sleep 15",
+#       # Configure inventory
+#       "cd ansible-automation-platform-containerized-setup-<AAP_VERSION>",
+#       "wget -O inventory-growth https://raw.githubusercontent.com/r3dact3d/AAP-2.5-Containerized-on-AWS/refs/heads/ansible/post_data/inventory-growth-custom",
+#       "sleep 15",
+#       "sed -i 's/<set your own>/new-install-password/g' inventory-growth",
+#       "sed -i 's/aap.example.org/${aws_instance.aap_instance.public_dns}/g' inventory-growth",
+#       "sed -i 's/<your RHN username>/rhn_user/g' inventory-growth",
+#       "sed -i 's/<your RHN password>/rhn_pass/g' inventory-growth",
+#       #"sed -i 's/<path_to_nfs_share>/${aws_efs_file_system.efs.dns_name}/g' inventory-growth",
+#       "sleep 15",
 
-      "ansible-playbook -i inventory-growth ansible.containerized_installer.install -c local --private-key /home/ec2-user/.ssh/cloud_keys",
-    ]
+#       "ansible-playbook -i inventory-growth ansible.containerized_installer.install -c local --private-key /home/ec2-user/.ssh/cloud_keys",
+#     ]
 
 
-    connection {
-      type        = "ssh"
-      host        = aws_instance.aap_instance.public_ip
-      user        = "ec2-user"
-      private_key = tls_private_key.cloud_key.private_key_pem
-    }
-  }
-}
+#     connection {
+#       type        = "ssh"
+#       host        = aws_instance.aap_instance.public_ip
+#       user        = "ec2-user"
+#       private_key = tls_private_key.cloud_key.private_key_pem
+#     }
+#   }
+# }
 
 # Add created ec2 instance to ansible inventory
 resource "ansible_host" "aap_instance" {
