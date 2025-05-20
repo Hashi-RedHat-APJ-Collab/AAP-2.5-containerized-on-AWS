@@ -15,12 +15,12 @@ terraform {
 
   }
   required_version = ">= 1.11.0"
-  cloud {
+  # cloud {
 
-    organization = "Hashi-RedHat-APJ-Collab"
+  #   organization = "Hashi-RedHat-APJ-Collab"
 
-    workspaces {
-      name = "aap-25-containerized"
-    }
-  }
+  #   workspaces {
+  #     name = "aap-25-containerized"
+  #   }
+  # }
 }
