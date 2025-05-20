@@ -1,33 +1,6 @@
-# Resource file 
 
-terraform {
-  required_providers {
-    ansible = {
-      version = "~> 1.3.0"
-      source  = "ansible/ansible"
-    }
-    aws = {
-      source = "hashicorp/aws"
-      version = "~> 4.16"
-    }
-  }
-  required_version = ">= 1.2.0"
-}
 
-terraform { 
-  cloud { 
-    
-    organization = "Hashi-RedHat-APJ-Collab" 
 
-    workspaces { 
-      name = "aap-25-containerized" 
-    } 
-  } 
-}
-
-provider "aws" {
-  region = "ap-southeast-2"
-}
 
 #Generate SSH key pair 
 resource "tls_private_key" "cloud_key" {
@@ -193,19 +166,19 @@ resource "aws_instance" "aap_instance" {
   instance_type               = "t2.xlarge"
   vpc_security_group_ids      = [aws_security_group.aap_security_group.id]
   associate_public_ip_address = true
-  key_name        = aws_key_pair.cloud_key.key_name
-  user_data                   = file("user_data.txt")
-  ami                         = data.aws_ami.rhel.id
-  availability_zone           = "us-east-2a"
-  subnet_id                   = aws_subnet.aap_subnet.id
+  key_name                    = aws_key_pair.cloud_key.key_name
+  //user_data                   = file("user_data.txt")
+  ami               = data.aws_ami.rhel.id
+  availability_zone = "us-east-2a"
+  subnet_id         = aws_subnet.aap_subnet.id
 
-# Specify the root block device to adjust volume size
+  # Specify the root block device to adjust volume size
   root_block_device {
-    volume_size = 100        # Set desired size in GB (e.g., 100 GB)
-    volume_type = "gp3"      # Optional: Specify volume type (e.g., "gp3" for general purpose SSD)
+    volume_size           = 100   # Set desired size in GB (e.g., 100 GB)
+    volume_type           = "gp3" # Optional: Specify volume type (e.g., "gp3" for general purpose SSD)
     delete_on_termination = true  # Optional: Automatically delete volume on instance termination
   }
-  
+
   tags = {
     Name      = "aap-controller"
     Terraform = "true"
@@ -240,7 +213,7 @@ resource "aws_security_group" "efs_security_group" {
 
 # Create an EFS File System
 resource "aws_efs_file_system" "efs" {
-  creation_token = "aap-efs"
+  creation_token   = "aap-efs"
   performance_mode = "generalPurpose" # or "maxIO" for high IOPS
   lifecycle_policy {
     transition_to_ia = "AFTER_30_DAYS" # Optional: Move files to Infrequent Access after 30 days
@@ -266,7 +239,7 @@ resource "null_resource" "hostname_update" {
     inline = [
       # Register Red Hat Host
       "sudo rhc connect --activation-key=<activation_key_name> --organization=<organization_ID>",
-      
+
       # Ensure stuff is installed
       "sudo dnf install -y ansible-core wget git-core rsync vim",
 
@@ -300,8 +273,8 @@ resource "null_resource" "hostname_update" {
 
       "ansible-playbook -i inventory-growth ansible.containerized_installer.install -c local --private-key /home/ec2-user/.ssh/cloud_keys",
     ]
-    
-    
+
+
     connection {
       type        = "ssh"
       host        = aws_instance.aap_instance.public_ip
