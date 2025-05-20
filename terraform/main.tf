@@ -14,16 +14,19 @@ terraform {
   required_version = ">= 1.2.0"
 }
 
-terraform {
-  backend "s3" {
-    bucket = "<S3_BUCKET_NAME>"
-    key    = "terraform.tfstate"
-    region = "<AWS_REGION>"
-  }
+terraform { 
+  cloud { 
+    
+    organization = "Hashi-RedHat-APJ-Collab" 
+
+    workspaces { 
+      name = "aap-25-containerized" 
+    } 
+  } 
 }
 
 provider "aws" {
-  region = "<AWS_REGION>"
+  region = "ap-southeast-2"
 }
 
 #Generate SSH key pair 
